@@ -1,3 +1,2 @@
-all:
-	python kb.py
-
+kb.log: kb.py kb.ini
+	python $^ > $@ && tail $(TAIL) $@
