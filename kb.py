@@ -43,15 +43,53 @@ class Frame:
         return self.nest.pop()
     def top(self):
         return self.nest[-1]
+    def dropall(self):
+        self.nest = [] ; return self
     
     def eval(self,vm):
         vm // self
+        
+## ##################################################### primitive/scalar types
 
 class Primitive(Frame): pass
 
 class Symbol(Primitive): pass
 
 class String(Primitive): pass
+
+class Number(Primitive):
+    def __init__(self,V):
+        Primitive.__init__(self,float(V))
+
+class Integer(Number):
+    def __init__(self,V):
+        Primitive.__init__(self,int(V))
+
+class Hex(Integer):
+    def __init__(self,V):
+        Primitive.__init__(self,int(V[2:],0x10))
+    def _val(self):
+        return hex(self.val)
+
+class Bin(Integer):
+    def __init__(self,V):
+        Primitive.__init__(self,int(V[2:],0x02))
+    def _val(self):
+        return bin(self.val)
+
+## ############################################################ data containers
+
+class Container(Frame): pass
+
+class Vector(Container): pass
+
+class Stack(Container): pass
+
+class Dict(Container): pass
+
+class Queue(Container): pass
+
+## #################################### active (executable/evaluatable) objects
 
 class Active(Frame): pass
 
@@ -70,23 +108,6 @@ class Cmd(Active):
     def eval(self,vm):
         self.fn(vm)
         
-## ############################################ PLY-powered parser (lexer only)
-    
-import ply.lex as lex
-
-tokens = ['symbol']
-
-t_ignore = ' \t\r\n'
-t_ignore_comment = '[\#].*'
-
-def t_symbol(t):
-    r'[`]|[^ \t\r\n\#]+'
-    return Symbol(t.value)
-
-def t_error(t): raise SyntaxError(t)
-
-lexer = lex.lex()
-
 ## ##################################################### global virtual machine
 
 vm = VM('kb')
@@ -102,10 +123,62 @@ vm['?'] = Q
 def QQ(vm): Q(vm) ; BYE(vm)
 vm['??'] = QQ
 
-## ### frame manipulations
+### ########################################################## stack operations
+
+def DOT(vm): vm.dropall()
+vm['.'] = DOT
+
+## ######################################################## frame manipulations
 
 def EQ(vm): addr = vm.pop() ; vm[addr.val] = vm.pop()
 vm['='] = EQ
+
+## ############################################ PLY-powered parser (lexer only)
+    
+import ply.lex as lex
+
+tokens = ['symbol','string','number','integer','hex','bin']
+
+t_ignore = ' \t\r\n'
+t_ignore_comment = r'[#\\].*'
+
+states = (('str','exclusive'),)
+t_str_ignore = ''
+def t_str(t):
+    r'\''
+    t.lexer.push_state('str') ; t.lexer.string = ''
+def t_str_str(t):
+    r'\''
+    t.lexer.pop_state() ; return String(t.lexer.string)
+def t_str_char(t):
+    r'.'
+    t.lexer.string += t.value
+
+def t_hex(t):
+    r'0x[0-9a-fA-F]+'
+    return Hex(t.value)
+def t_bin(t):
+    r'0b[01]+'
+    return Bin(t.value)
+
+def t_number_exp(t):
+    r'[+\-]?[0-9]+[eE][+\-]?[0-9]+'
+    return Number(t.value)
+def t_number_dot(t):
+    r'[+\-]?[0-9]*\.[0-9]+'
+    return Number(t.value)
+    
+def t_integer(t):
+    r'[+\-]?[0-9]+'
+    return Integer(t.value)
+
+def t_symbol(t):
+    r'[`]|[^ \t\r\n\#\\]+'
+    return Symbol(t.value)
+
+def t_ANY_error(t): raise SyntaxError(t)
+
+lexer = lex.lex()
 
 ## ################################################################ interpreter
 
@@ -131,7 +204,6 @@ def INTERPRET(vm):
         if not WORD(vm): break;
         if isinstance(vm.top(),Symbol):
             if not FIND(vm): raise SyntaxError(vm)
-        Q(vm)
         EVAL(vm)
         
 ## ################################################################ system init
