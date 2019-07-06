@@ -7,4 +7,4 @@ merge:
 
 NOW = $(shell date +%d%m%y) 
 release:
-	git tag $(NOW) && git push -v gh master
+	git tag $(NOW) && git push -v gh master --tags

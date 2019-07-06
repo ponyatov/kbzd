@@ -11,20 +11,25 @@ class Frame:
         self.val  = V
         self.slot = {}
         self.nest = []
+        self.immed = False
         
     def __repr__(self):
         return self.dump()
-    def dump(self,depth=0,prefix=''):
+    def dump(self,depth=0,prefix='',voc=True):
         tree = self._pad(depth) + self.head(prefix)
-        for i in self.slot:
-            tree += self.slot[i].dump(depth+1,prefix=i+' = ')
+        if not depth: Frame._dumped = []
+        if self in Frame._dumped: return tree + ' _/'
+        else: Frame._dumped.append(self)
+        if voc:
+            for i in self.slot:
+                tree += self.slot[i].dump(depth+1,prefix=i+' = ')
         for j in self.nest:
             tree += j.dump(depth+1)
         return tree
     def head(self,prefix=''):
         return '%s<%s:%s> @%x' % (prefix,self.type,self._val(),id(self))
     def _pad(self,depth):
-        return '\n' + '\t' * depth
+        return '\n' + ' '*4 * depth
     def _val(self):
         return str(self.val)
     
@@ -94,6 +99,9 @@ class Queue(Container): pass
 class Active(Frame): pass
 
 class VM(Active):
+    def __init__(self,V):
+        Active.__init__(self, V)
+        self.compile = []
     def __setitem__(self,key,F):
         if callable(F): self[key] = Cmd(F) ; return self
         else: return Active.__setitem__(self,key,F)
@@ -102,11 +110,32 @@ class VM(Active):
         else: return Active.__lshift__(self, F)
 
 class Cmd(Active):
-    def __init__(self,F):
+    def __init__(self,F,I=False):
         Active.__init__(self, F.__name__)
+        self.immed = I
         self.fn = F
     def eval(self,vm):
         self.fn(vm)
+        
+class Seq(Active,Vector): pass
+
+## ######################################################################## I/O
+
+class IO(Frame): pass
+
+class Dir(IO): pass
+class File(IO): pass
+
+## #################################################################### network
+
+class Net(IO): pass
+class Url(Net): pass
+
+## ############################################################ metaprogramming
+
+class Meta(Frame): pass
+
+class Module(Meta): pass
         
 ## ##################################################### global virtual machine
 
@@ -117,11 +146,11 @@ vm = VM('kb')
 def BYE(vm): sys.exit(0)
 vm << BYE
 
-def Q(vm): print(vm)
-vm['?'] = Q
+def Q(vm): print(vm.dump(voc=False))
+vm['?'] = Cmd(Q,I=True)
 
-def QQ(vm): Q(vm) ; BYE(vm)
-vm['??'] = QQ
+def QQ(vm): print(vm.dump(voc=True)) ; BYE(vm)
+vm['??'] = Cmd(QQ,I=True)
 
 ### ########################################################## stack operations
 
@@ -132,6 +161,18 @@ vm['.'] = DOT
 
 def EQ(vm): addr = vm.pop() ; vm[addr.val] = vm.pop()
 vm['='] = EQ
+
+## ######################################################################## I/O
+
+## #################################################################### network
+
+def URL(vm): vm // Url(vm.pop().val)
+vm['URL'] = URL
+
+## ############################################################ metaprogramming
+
+def MODULE(vm): vm // Module(vm.pop().val)
+vm << MODULE
 
 ## ############################################ PLY-powered parser (lexer only)
     
@@ -192,7 +233,8 @@ def WORD(vm):
 
 def FIND(vm):
     token = vm.pop()
-    vm // vm[token.val] ; return True
+    try: vm // vm[token.val] ; return True
+    except KeyError: vm // vm[token.val.upper()] ; return True
     return False
 
 def EVAL(vm):
@@ -204,8 +246,33 @@ def INTERPRET(vm):
         if not WORD(vm): break;
         if isinstance(vm.top(),Symbol):
             if not FIND(vm): raise SyntaxError(vm)
-        EVAL(vm)
+        if not vm.compile or vm.top().immed:
+            EVAL(vm)
+        else:
+            COMPILE(vm)
+            
+## ################################################################### compiler
+
+def COMPILE(vm): vm.compile[-1] // vm.pop()
+
+def REC(vm): vm.compile[-1] // vm.compile[-1]
+vm['REC'] = Cmd(REC,I=True)
         
+def LQ(vm): vm.compile.append(Vector(''))
+vm['['] = Cmd(LQ,I=True)
+
+def RQ(vm):
+    item = vm.compile.pop()
+    if vm.compile: vm.compile[-1] // item
+    else: vm // item
+vm[']'] = Cmd(RQ,I=True)
+
+def LC(vm): vm.compile.append(Seq(''))
+vm['{'] = Cmd(LC,I=True)
+
+def RC(vm): RQ(vm)
+vm['}'] = Cmd(RC,I=True)
+
 ## ################################################################ system init
 
 if __name__ == '__main__':
