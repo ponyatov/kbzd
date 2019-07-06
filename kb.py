@@ -2,6 +2,8 @@
 
 import os,sys
 
+## ######################################### Marvin Minsky extended frame model
+
 class Frame:
     
     def __init__(self,V):
@@ -14,6 +16,10 @@ class Frame:
         return self.dump()
     def dump(self,depth=0,prefix=''):
         tree = self._pad(depth) + self.head(prefix)
+        for i in self.slot:
+            tree += self.slot[i].dump(depth+1,prefix=i+' = ')
+        for j in self.nest:
+            tree += j.dump(depth+1)
         return tree
     def head(self,prefix=''):
         return '%s<%s:%s> @%x' % (prefix,self.type,self._val(),id(self))
@@ -35,6 +41,11 @@ class Frame:
         self.nest.append(that) ; return self
     def pop(self):
         return self.nest.pop()
+    def top(self):
+        return self.nest[-1]
+    
+    def eval(self,vm):
+        vm // self
 
 class Primitive(Frame): pass
 
@@ -52,7 +63,14 @@ class VM(Active):
         if callable(F): return self << Cmd(F)
         else: return Active.__lshift__(self, F)
 
-class Cmd(Active): pass
+class Cmd(Active):
+    def __init__(self,F):
+        Active.__init__(self, F.__name__)
+        self.fn = F
+    def eval(self,vm):
+        self.fn(vm)
+        
+## ############################################ PLY-powered parser (lexer only)
     
 import ply.lex as lex
 
@@ -69,20 +87,54 @@ def t_error(t): raise SyntaxError(t)
 
 lexer = lex.lex()
 
+## ##################################################### global virtual machine
+
 vm = VM('kb')
 
-def BYE(vm=vm): sys.exit(0)
+## ###################################################################### debug
+
+def BYE(vm): sys.exit(0)
 vm << BYE
 
-def QQ(vm=vm): print(vm) ; BYE(vm)
+def Q(vm): print(vm)
+vm['?'] = Q
+
+def QQ(vm): Q(vm) ; BYE(vm)
 vm['??'] = QQ
+
+## ### frame manipulations
+
+def EQ(vm): addr = vm.pop() ; vm[addr.val] = vm.pop()
+vm['='] = EQ
+
+## ################################################################ interpreter
+
+def QUOTE(vm): WORD(vm)
+vm['`'] = QUOTE
+
+def WORD(vm):
+    token = lexer.token()
+    if token: vm // token ; return True
+    return False
+
+def FIND(vm):
+    token = vm.pop()
+    vm // vm[token.val] ; return True
+    return False
+
+def EVAL(vm):
+    vm.pop().eval(vm)
     
-def INTERPRET(vm=vm):
+def INTERPRET(vm):
     lexer.input(vm.pop().val)
     while True:
-        token = lexer.token()
-        if not token: break
-        print( token )
+        if not WORD(vm): break;
+        if isinstance(vm.top(),Symbol):
+            if not FIND(vm): raise SyntaxError(vm)
+        Q(vm)
+        EVAL(vm)
+        
+## ################################################################ system init
 
 if __name__ == '__main__':
-    vm // String(open('kb.ini').read()) ; INTERPRET() ; QQ()
+    vm // String(open('kb.ini').read()) ; INTERPRET(vm) ; QQ(vm)
