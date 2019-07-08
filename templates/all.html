@@ -1,0 +1,36 @@
+<title>{{vm.val}}</title>
+<link rel="stylesheet" href="css.css">
+<link rel="shortcut icon" href="/static/logo.png" type="image/png">
+
+{% block body %}
+{% endblock %}
+
+{% block cli %}
+<form id=cli method=post>
+{{form.hidden_tag()}}
+{{form.pad()}}
+{{form.go()}}
+</form>
+{% endblock %}
+
+<script>
+{% block script %}
+
+window.onload = function() {
+	cli = document.getElementById('cli')
+	pad = document.getElementById('pad')
+	go  = document.getElementById('go')
+	pad.onkeydown = ctrlenter
+}
+
+function ctrlenter(event) {
+	if (event.key == 'Enter' & (event.shiftKey | event.ctrlKey )) {
+		cli.submit()
+//		from = pad.selectionStart
+//		to   = pad.selectionEnd
+//		console.log("<"+pad.value.substring(from,to)+">")
+	}
+}
+
+{% endblock %}
+</script>

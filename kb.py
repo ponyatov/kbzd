@@ -130,6 +130,15 @@ class File(IO): pass
 
 class Net(IO): pass
 class Url(Net): pass
+class Web(Net): pass
+class Ip(Net): pass
+class Port(Net): pass
+
+## ################################################################ documenting
+
+class Doc(Frame): pass
+class Font(Doc): pass
+class Color(Doc): pass
 
 ## ############################################################ metaprogramming
 
@@ -163,11 +172,6 @@ def EQ(vm): addr = vm.pop() ; vm[addr.val] = vm.pop()
 vm['='] = EQ
 
 ## ######################################################################## I/O
-
-## #################################################################### network
-
-def URL(vm): vm // Url(vm.pop().val)
-vm['URL'] = URL
 
 ## ############################################################ metaprogramming
 
@@ -272,6 +276,53 @@ vm['{'] = Cmd(LC,I=True)
 
 def RC(vm): RQ(vm)
 vm['}'] = Cmd(RC,I=True)
+
+## #################################################################### network
+
+def URL(vm): vm // Url(vm.pop().val)
+vm['URL'] = URL
+
+def WEB(vm):
+    web = Web(vm.val) ; vm['WEB'] = web
+    web['IP'] = Ip('127.0.0.1') ; web['PORT'] = Port(8888)
+    css = web['CSS'] = File('dark.css')
+    css['font'] = Font('monospace')
+    css['font']['size'] = String('3mm')
+    css['background'] = Color('black')
+    css['color'] = Color('lightgreen')
+    
+    import flask,flask_wtf,wtforms
+    
+    web.app = flask.Flask(vm.val)
+    web.app.config['SECRET_KEY'] = os.urandom(32)
+    
+    class CLI(flask_wtf.FlaskForm):
+        pad = wtforms.TextAreaField('pad',
+                                    render_kw={'rows':5,'autofocus':'true'},
+                                    default='# metaL/kb')
+        go  = wtforms.SubmitField('go')
+    
+    @web.app.route('/',methods=['GET','POST'])
+    def index():
+        form = CLI()
+        if form.validate_on_submit():
+            vm // String(form.pad.data) ; INTERPRET(vm)
+        return flask.render_template('index.html',vm=vm,web=web,form=form)
+    
+    @web.app.route('/css.css')
+    def css():
+        return flask.Response(
+            flask.render_template('css.css',vm=vm,web=web),
+            mimetype='text/css')
+        
+    @web.app.route('/<path:path>')
+    def path(path):
+        return flask.render_template('dump.html',vm=vm[path],web=web)
+    
+    web.app.run(
+        host=web['IP'].val,port=web['PORT'].val,debug=True,extra_files='kb.ini')
+     
+vm['WEB'] = WEB
 
 ## ################################################################ system init
 
